@@ -1,7 +1,3 @@
---[========================================================--
-    STANDALONE - WORLD CUTTING SLASH TOOL (WITH VFX)
---========================================================]
-
 local players = game:GetService("Players")
 local replicatedStorage = game:GetService("ReplicatedStorage")
 local tweenService = game:GetService("TweenService")
@@ -10,17 +6,15 @@ local workspace = game:GetService("Workspace")
 
 local player = players.LocalPlayer
 
-local function activateWorldCuttingSlash()
+local function executeWorldCuttingSlash()
     local char = player.Character
     if not char then return end
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
 
-    -- Save original movement stats to restore them later
     local originalWalkSpeed = humanoid.WalkSpeed
     local originalJumpPower = humanoid.JumpPower
 
-    -- Freeze movement and jumping
     humanoid.WalkSpeed = 0
     humanoid.JumpPower = 0
 
@@ -29,7 +23,6 @@ local function activateWorldCuttingSlash()
     local animTrack = humanoid:LoadAnimation(animObj)
     animTrack:Play()
 
-    -- Restore movement when the animation stops
     animTrack.Stopped:Once(function()
         if humanoid then
             humanoid.WalkSpeed = originalWalkSpeed
@@ -43,7 +36,6 @@ local function activateWorldCuttingSlash()
         accessory.Parent = char
         accessory:SetAttribute("EmoteProperty", true)
         
-        -- Full HugeSlash VFX integration
         local vfxModule = replicatedStorage:FindFirstChild("Emotes") and replicatedStorage.Emotes:FindFirstChild("VFX")
         if vfxModule then
             pcall(function()
@@ -80,48 +72,47 @@ local function activateWorldCuttingSlash()
                 }):Play()
                 
                 local hitCharacters = {}
-                local startTime = tick()
-                
-                task.spawn(function()
-                    while hitPart and hitPart.Parent and accessory and accessory.Parent and (tick() - startTime <= 1) do
-                        local partsInBox = workspace:GetPartsInPart(hitPart, OverlapParams.new())
-                        local hitModels = {}
-                        for _, part in ipairs(partsInBox) do
-                            local modelHumanoid = part.Parent:FindFirstChildOfClass("Humanoid")
-                            local forceField = part.Parent:FindFirstChildOfClass("ForceField")
-                            if modelHumanoid and (modelHumanoid.Name ~= "FakeHumanoid" and (not forceField and (modelHumanoid ~= humanoid and not table.find(hitCharacters, modelHumanoid.Parent)))) then
-                                table.insert(hitModels, modelHumanoid.Parent)
-                                table.insert(hitCharacters, modelHumanoid.Parent)
-                            end
+                local function checkHits()
+                    local partsInBox = workspace:GetPartsInPart(hitPart, OverlapParams.new())
+                    local hitModels = {}
+                    for _, part in ipairs(partsInBox) do
+                        local modelHumanoid = part.Parent:FindFirstChildOfClass("Humanoid")
+                        local forceField = part.Parent:FindFirstChildOfClass("ForceField")
+                        if modelHumanoid and (modelHumanoid.Name ~= "FakeHumanoid" and (not forceField and (modelHumanoid ~= humanoid and not table.find(hitCharacters, modelHumanoid.Parent)))) then
+                            table.insert(hitModels, modelHumanoid.Parent)
+                            table.insert(hitCharacters, modelHumanoid.Parent)
                         end
-                        
-                        for _, targetModel in ipairs(hitModels) do
-                            local modelHum = targetModel:FindFirstChild("Humanoid")
-                            local rootP = targetModel:FindFirstChild("HumanoidRootPart")
-                            if modelHum and (modelHum.Health <= 0 and rootP) then
-                                if shared.sfx then
-                                    pcall(function()
-                                        shared.sfx({
-                                            SoundId = "rbxassetid://74053599625174",
-                                            Volume = 5,
-                                            CFrame = rootP.CFrame
-                                        }):Play()
-                                    end)
-                                end
-                                for _, descendant in ipairs(targetModel:GetDescendants()) do
-                                    if descendant:IsA("BallSocketConstraint") or descendant:IsA("Weld") then
-                                        descendant:Destroy()
-                                    end
-                                end
-                            end
-                        end
-                        task.wait()
                     end
-                end)
+                    return hitModels
+                end
+                
+                local startTime = tick()
+                while task.wait() and (hitPart and hitPart.Parent and accessory and accessory.Parent and (tick() - startTime <= 1)) do
+                    local hitModels = checkHits()
+                    for _, targetModel in ipairs(hitModels) do
+                        local modelHum = targetModel:FindFirstChild("Humanoid")
+                        local rootP = targetModel:FindFirstChild("HumanoidRootPart")
+                        if modelHum and (modelHum.Health <= 0 and rootP) then
+                            if shared.sfx then
+                                pcall(function()
+                                    shared.sfx({
+                                        SoundId = "rbxassetid://74053599625174",
+                                        Volume = 5,
+                                        CFrame = rootP.CFrame
+                                    }):Play()
+                                end)
+                            end
+                            for _, descendant in ipairs(targetModel:GetDescendants()) do
+                                if descendant:IsA("BallSocketConstraint") or descendant:IsA("Weld") then
+                                    descendant:Destroy()
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end)
         
-        -- Triggers the tree clearing box at 3.7 seconds with working full-model regeneration
         task.delay(3.7, function()
             if char and char.PrimaryPart then
                 local currentCFrame = char.PrimaryPart.CFrame
@@ -195,25 +186,24 @@ local function activateWorldCuttingSlash()
     end)
 end
 
-local function giveTool(character)
-    local backpack = player:FindFirstChildOfClass("Backpack")
+local function giveTool()
+    local backpack = player:FindFirstChild("Backpack")
     if not backpack then return end
-    
-    if not backpack:FindFirstChild("World Cutting Slash") and not character:FindFirstChild("World Cutting Slash") then
+
+    if not backpack:FindFirstChild("World Cutting Slash") and not (player.Character and player.Character:FindFirstChild("World Cutting Slash")) then
         local tool = Instance.new("Tool")
         tool.Name = "World Cutting Slash"
         tool.RequiresHandle = false
-        tool.CanBeDropped = false
-        
-        tool.Activated:Connect(function()
-            activateWorldCuttingSlash()
-        end)
-        
         tool.Parent = backpack
+
+        tool.Activated:Connect(function()
+            executeWorldCuttingSlash()
+        end)
     end
 end
 
-if player.Character then
-    giveTool(player.Character)
-end
-player.CharacterAdded:Connect(giveTool)
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    giveTool()
+end)
+giveTool()
