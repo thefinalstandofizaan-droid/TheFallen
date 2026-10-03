@@ -1,0 +1,219 @@
+--[========================================================--
+    STANDALONE - WORLD CUTTING SLASH TOOL (WITH VFX)
+--========================================================]
+
+local players = game:GetService("Players")
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local tweenService = game:GetService("TweenService")
+local debris = game:GetService("Debris")
+local workspace = game:GetService("Workspace")
+
+local player = players.LocalPlayer
+
+local function activateWorldCuttingSlash()
+    local char = player.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    -- Save original movement stats to restore them later
+    local originalWalkSpeed = humanoid.WalkSpeed
+    local originalJumpPower = humanoid.JumpPower
+
+    -- Freeze movement and jumping
+    humanoid.WalkSpeed = 0
+    humanoid.JumpPower = 0
+
+    local animObj = Instance.new("Animation")
+    animObj.AnimationId = "rbxassetid://120001337057214"
+    local animTrack = humanoid:LoadAnimation(animObj)
+    animTrack:Play()
+
+    -- Restore movement when the animation stops
+    animTrack.Stopped:Once(function()
+        if humanoid then
+            humanoid.WalkSpeed = originalWalkSpeed
+            humanoid.JumpPower = originalJumpPower
+        end
+    end)
+
+    task.delay(0.1, function()
+        local accessory = Instance.new("Accessory")
+        accessory.Name = "#EmoteHolder_" .. math.random(1, 100000)
+        accessory.Parent = char
+        accessory:SetAttribute("EmoteProperty", true)
+        
+        -- Full HugeSlash VFX integration
+        local vfxModule = replicatedStorage:FindFirstChild("Emotes") and replicatedStorage.Emotes:FindFirstChild("VFX")
+        if vfxModule then
+            pcall(function()
+                require(vfxModule):MainFunction({
+                    Character = char,
+                    vfxName = "HugeSlash",
+                    SpecificModule = vfxModule,
+                    AnimSent = 120001337057214,
+                    RealBind = accessory,
+                    CanRotate = true
+                })
+            end)
+        end
+        
+        local markerConnection = animTrack:GetMarkerReachedSignal("fifth"):Once(function()
+            if accessory and accessory.Parent and char.PrimaryPart then
+                local rootCFrame = char.PrimaryPart.CFrame
+                char:SetAttribute("ForcedCFrame", rootCFrame)
+                
+                local hitPart = Instance.new("Part")
+                hitPart.Size = Vector3.new(55, 35, 10)
+                hitPart.Transparency = 1
+                hitPart.BrickColor = BrickColor.new("Really red")
+                hitPart.Anchored = true
+                hitPart.CanCollide = false
+                hitPart.CanQuery = false
+                hitPart.CanTouch = false
+                hitPart.CFrame = rootCFrame * CFrame.new(0, -10, -4)
+                hitPart.Parent = workspace:FindFirstChild("Thrown") or workspace
+                debris:AddItem(hitPart, 1)
+                
+                tweenService:Create(hitPart, TweenInfo.new(0.19, Enum.EasingStyle.Linear), {
+                    CFrame = rootCFrame * CFrame.new(0, -10, -114)
+                }):Play()
+                
+                local hitCharacters = {}
+                local startTime = tick()
+                
+                task.spawn(function()
+                    while hitPart and hitPart.Parent and accessory and accessory.Parent and (tick() - startTime <= 1) do
+                        local partsInBox = workspace:GetPartsInPart(hitPart, OverlapParams.new())
+                        local hitModels = {}
+                        for _, part in ipairs(partsInBox) do
+                            local modelHumanoid = part.Parent:FindFirstChildOfClass("Humanoid")
+                            local forceField = part.Parent:FindFirstChildOfClass("ForceField")
+                            if modelHumanoid and (modelHumanoid.Name ~= "FakeHumanoid" and (not forceField and (modelHumanoid ~= humanoid and not table.find(hitCharacters, modelHumanoid.Parent)))) then
+                                table.insert(hitModels, modelHumanoid.Parent)
+                                table.insert(hitCharacters, modelHumanoid.Parent)
+                            end
+                        end
+                        
+                        for _, targetModel in ipairs(hitModels) do
+                            local modelHum = targetModel:FindFirstChild("Humanoid")
+                            local rootP = targetModel:FindFirstChild("HumanoidRootPart")
+                            if modelHum and (modelHum.Health <= 0 and rootP) then
+                                if shared.sfx then
+                                    pcall(function()
+                                        shared.sfx({
+                                            SoundId = "rbxassetid://74053599625174",
+                                            Volume = 5,
+                                            CFrame = rootP.CFrame
+                                        }):Play()
+                                    end)
+                                end
+                                for _, descendant in ipairs(targetModel:GetDescendants()) do
+                                    if descendant:IsA("BallSocketConstraint") or descendant:IsA("Weld") then
+                                        descendant:Destroy()
+                                    end
+                                end
+                            end
+                        end
+                        task.wait()
+                    end
+                end)
+            end
+        end)
+        
+        -- Triggers the tree clearing box at 3.7 seconds with working full-model regeneration
+        task.delay(3.7, function()
+            if char and char.PrimaryPart then
+                local currentCFrame = char.PrimaryPart.CFrame
+                local treeBox = Instance.new("Part")
+                treeBox.Size = Vector3.new(300, 300, 300)
+                treeBox.Transparency = 1
+                treeBox.Anchored = true
+                treeBox.CanCollide = false
+                treeBox.CanQuery = true
+                treeBox.CanTouch = false
+                treeBox.CFrame = currentCFrame * CFrame.new(0, 0, -100)
+                treeBox.Parent = workspace
+                debris:AddItem(treeBox, 1)
+                
+                local overlapParams = OverlapParams.new()
+                overlapParams.FilterType = Enum.RaycastFilterType.Include
+                overlapParams.FilterDescendantsInstances = {workspace}
+                
+                local partsInBox = workspace:GetPartsInPart(treeBox, overlapParams)
+                local clearedObjects = {}
+                local savedTreeData = {}
+                
+                for _, part in ipairs(partsInBox) do
+                    local targetObj = part
+                    local current = part.Parent
+                    while current and current ~= workspace and current ~= game do
+                        if current:IsA("Model") then
+                            targetObj = current
+                        end
+                        current = current.Parent
+                    end
+                    
+                    if targetObj and not clearedObjects[targetObj] then
+                        local objName = targetObj.Name:lower()
+                        if targetObj.Name == "Tree" or objName:find("tree") then
+                            clearedObjects[targetObj] = true
+                            
+                            local treeClone = targetObj:Clone()
+                            table.insert(savedTreeData, {
+                                Clone = treeClone,
+                                Parent = targetObj.Parent
+                            })
+                            
+                            targetObj:Destroy()
+                        end
+                    end
+                end
+                
+                task.delay(20, function()
+                    for _, data in ipairs(savedTreeData) do
+                        if data.Clone and data.Parent then
+                            data.Clone.Parent = data.Parent
+                        end
+                    end
+                end)
+            end
+        end)
+        
+        task.delay(4, function()
+            if markerConnection then
+                markerConnection:Disconnect()
+            end
+        end)
+        
+        local sound = Instance.new("Sound")
+        sound.SoundId = "rbxassetid://103835306879590"
+        sound.Volume = 3
+        sound.Looped = false
+        sound.Parent = char:FindFirstChild("Torso") or char.PrimaryPart
+        sound:Play()
+    end)
+end
+
+local function giveTool(character)
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    if not backpack then return end
+    
+    if not backpack:FindFirstChild("World Cutting Slash") and not character:FindFirstChild("World Cutting Slash") then
+        local tool = Instance.new("Tool")
+        tool.Name = "World Cutting Slash"
+        tool.RequiresHandle = false
+        tool.CanBeDropped = false
+        
+        tool.Activated:Connect(function()
+            activateWorldCuttingSlash()
+        end)
+        
+        tool.Parent = backpack
+    end
+end
+
+if player.Character then
+    giveTool(player.Character)
+end
+player.CharacterAdded:Connect(giveTool)
