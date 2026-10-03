@@ -3,44 +3,93 @@ local replicatedStorage = game:GetService("ReplicatedStorage")
 local tweenService = game:GetService("TweenService")
 local debris = game:GetService("Debris")
 local workspace = game:GetService("Workspace")
+local contextActionService = game:GetService("ContextActionService")
 
 local player = players.LocalPlayer
-local isCooldown = false
-local cooldownTime = 4
+local isSessionActive = false
+
+-- Get Player controls module safely for locking movement
+local playerModuleScript = player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule", 5)
+local controls = playerModuleScript and require(playerModuleScript):GetControls()
+
+local INPUT_BLOCK_NAME = "WCS_SessionLock"
+
+local function sinkInputs(actionName, inputState, inputObject)
+    return Enum.ContextActionResult.Sink
+end
+
+local function lockPlayer(humanoid)
+    if controls then
+        controls:Disable()
+    end
+    humanoid.WalkSpeed = 0
+    humanoid.JumpPower = 0
+    humanoid.AutoRotate = false
+
+    -- Sinks movement, jumping, M1, and ability keys completely during the session
+    contextActionService:BindActionAtPriority(
+        INPUT_BLOCK_NAME,
+        sinkInputs,
+        false,
+        Enum.ContextActionPriority.High.Value + 100,
+        Enum.KeyCode.W,
+        Enum.KeyCode.A,
+        Enum.KeyCode.S,
+        Enum.KeyCode.D,
+        Enum.KeyCode.Space,
+        Enum.KeyCode.Q,
+        Enum.KeyCode.One,
+        Enum.KeyCode.Two,
+        Enum.KeyCode.Three,
+        Enum.KeyCode.Four,
+        Enum.UserInputType.MouseButton1
+    )
+end
+
+local function unlockPlayer(humanoid, originalWalkSpeed, originalJumpPower)
+    contextActionService:UnbindAction(INPUT_BLOCK_NAME)
+    if controls then
+        controls:Enable()
+    end
+    if humanoid and humanoid.Parent then
+        humanoid.WalkSpeed = originalWalkSpeed
+        humanoid.JumpPower = originalJumpPower
+        humanoid.AutoRotate = true
+    end
+end
 
 local function executeWorldCuttingSlash()
-    -- Strict cooldown check to prevent overlapping
-    if isCooldown then return end
-    isCooldown = true
+    -- Session check: if a session is already active, block any new sessions from starting
+    if isSessionActive then return end
+    isSessionActive = true
 
     local char = player.Character
     if not char then 
-        isCooldown = false
+        isSessionActive = false
         return 
     end
     
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid then 
-        isCooldown = false
+        isSessionActive = false
         return 
     end
 
     local originalWalkSpeed = humanoid.WalkSpeed
     local originalJumpPower = humanoid.JumpPower
 
-    humanoid.WalkSpeed = 0
-    humanoid.JumpPower = 0
+    -- Lock movement, jump, M1, and controls instantly
+    lockPlayer(humanoid)
 
     local animObj = Instance.new("Animation")
     animObj.AnimationId = "rbxassetid://120001337057214"
     local animTrack = humanoid:LoadAnimation(animObj)
     animTrack:Play()
 
+    -- Ensure unlock happens when the session animation finishes or gets interrupted
     animTrack.Stopped:Once(function()
-        if humanoid then
-            humanoid.WalkSpeed = originalWalkSpeed
-            humanoid.JumpPower = originalJumpPower
-        end
+        unlockPlayer(humanoid, originalWalkSpeed, originalJumpPower)
+        isSessionActive = false
     end)
 
     task.delay(0.1, function()
@@ -197,11 +246,6 @@ local function executeWorldCuttingSlash()
         sound.Parent = char:FindFirstChild("Torso") or char.PrimaryPart
         sound:Play()
     end)
-
-    -- Reset cooldown after 4 seconds
-    task.delay(cooldownTime, function()
-        isCooldown = false
-    end)
 end
 
 local function giveTool()
@@ -221,6 +265,7 @@ local function giveTool()
 end
 
 player.CharacterAdded:Connect(function()
+    isSessionActive = false
     task.wait(1)
     giveTool()
 end)
