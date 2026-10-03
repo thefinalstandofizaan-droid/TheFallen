@@ -5,8 +5,13 @@ local debris = game:GetService("Debris")
 local workspace = game:GetService("Workspace")
 
 local player = players.LocalPlayer
+local lastUsedTime = 0
+local cooldownTime = 4
 
 local function executeWorldCuttingSlash()
+    if tick() - lastUsedTime < cooldownTime then return end
+    lastUsedTime = tick()
+
     local char = player.Character
     if not char then return end
     local humanoid = char:FindFirstChildOfClass("Humanoid")
