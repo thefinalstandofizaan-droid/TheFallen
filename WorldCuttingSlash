@@ -5,17 +5,24 @@ local debris = game:GetService("Debris")
 local workspace = game:GetService("Workspace")
 
 local player = players.LocalPlayer
-local lastUsedTime = 0
 local cooldownTime = 4
 
-local function executeWorldCuttingSlash()
-    if tick() - lastUsedTime < cooldownTime then return end
-    lastUsedTime = tick()
+local function executeWorldCuttingSlash(toolInstance)
+    -- Check if the tool is currently on cooldown using an attribute on the tool itself
+    if toolInstance:GetAttribute("OnCooldown") then return end
+    toolInstance:SetAttribute("OnCooldown", true)
 
     local char = player.Character
-    if not char then return end
+    if not char then 
+        toolInstance:SetAttribute("OnCooldown", false)
+        return 
+    end
+    
     local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
+    if not humanoid then 
+        toolInstance:SetAttribute("OnCooldown", false)
+        return 
+    end
 
     local originalWalkSpeed = humanoid.WalkSpeed
     local originalJumpPower = humanoid.JumpPower
@@ -156,7 +163,7 @@ local function executeWorldCuttingSlash()
                             clearedObjects[targetObj] = true
                             
                             local treeClone = targetObj:Clone()
-                            table.insert(savedTreeData, {
+                            table.init = table.insert(savedTreeData, {
                                 Clone = treeClone,
                                 Parent = targetObj.Parent
                             })
@@ -189,6 +196,13 @@ local function executeWorldCuttingSlash()
         sound.Parent = char:FindFirstChild("Torso") or char.PrimaryPart
         sound:Play()
     end)
+
+    -- Release the cooldown after 4 seconds
+    task.delay(cooldownTime, function()
+        if toolInstance then
+            toolInstance:SetAttribute("OnCooldown", false)
+        end
+    end)
 end
 
 local function giveTool()
@@ -202,7 +216,7 @@ local function giveTool()
         tool.Parent = backpack
 
         tool.Activated:Connect(function()
-            executeWorldCuttingSlash()
+            executeWorldCuttingSlash(tool)
         end)
     end
 end
