@@ -4,27 +4,41 @@ local workspace = game:GetService("Workspace")
 local runService = game:GetService("RunService")
 local tweenService = game:GetService("TweenService")
 local contextActionService = game:GetService("ContextActionService")
-local soundService = game:GetService("SoundService")
 
 local player = players.LocalPlayer
 local isExecuting = false
 local processedKills = {}
 local activeComboTargets = {}
-local activeJumpConnection = nil
-local activeAnimTrack = nil
 
 local vfxModule = replicatedStorage:FindFirstChild("Emotes") and replicatedStorage.Emotes:FindFirstChild("VFX")
 
+-- Get Player controls module safely for locking WASD movement
 local playerModuleScript = player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule", 5)
 local controls = playerModuleScript and require(playerModuleScript):GetControls()
 
 local INPUT_BLOCK_NAME = "FinisherInputBlock"
 
 local function blockInputs(actionName, inputState, inputObject)
-    return Enum.ContextActionResult.Sink
+    return Enum.ContextActionResult.Sink -- Blocks the input from doing anything else
 end
 
-local function lockControls()
+--[Finisher Structure with Full Input Lockdown, Tween Movement & Ragdoll Debris]
+local function triggerFinisher(targetCharacter)
+    if isExecuting or processedKills[targetCharacter] then return end
+    isExecuting = true
+    processedKills[targetCharacter] = true
+
+    local char = player.Character or player.CharacterAdded:Wait()
+    local rootPart = char:FindFirstChild("HumanoidRootPart")
+    local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    local humanoid = char:WaitForChild("Humanoid")
+    
+    if not rootPart then 
+        isExecuting = false
+        return 
+    end
+
+    -- LOCK ALL CONTROLS (WASD, Jump, 1-4, Q, M1)
     if controls then
         controls:Disable()
     end
@@ -42,130 +56,46 @@ local function lockControls()
         Enum.KeyCode.Space,
         Enum.UserInputType.MouseButton1
     )
-end
-
-local function unlockControls()
-    contextActionService:UnbindAction(INPUT_BLOCK_NAME)
-    if controls then
-        controls:Enable()
-    end
-end
-
-local cancelWCS
-
-local function playDismantleStartup()
-    local char = player.Character or player.CharacterAdded:Wait()
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-
-    lockControls()
-
-    local anim = Instance.new("Animation")
-    anim.AnimationId = "rbxassetid://133818134745501[span_0](start_span)"[span_0](end_span)
-    activeAnimTrack = humanoid:LoadAnimation(anim)
-    activeAnimTrack:Play()
-
-    task.delay(0.1, function()
-        if not isExecuting then return end
-        local existingEffect = char:FindFirstChild("DismantleEffect")
-        if existingEffect then
-            existingEffect:Destroy()
-        end
-
-        local accessory = Instance.new("Accessory")
-        accessory.Name = "DismantleEffect"
-        accessory.Parent = char
-        accessory:SetAttribute("EmoteEffect", true)[span_1](start_span)[span_1](end_span)
-
-        if vfxModule then
-            pcall(function()
-                require(vfxModule):MainFunction({
-                    Character = char,
-                    vfxName = "Pride",[span_2](start_span)[span_2](end_span)
-                    SpecificModule = vfxModule,
-                    AnimSent = 133818134745501,[span_3](start_span)[span_3](end_span)
-                    RealBind = accessory,
-                    CanRotate = true[span_4](start_span)[span_4](end_span)
-                })
-            end)
-        end
-
-        local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-        if torso then
-            local sound = Instance.new("Sound")
-            sound.SoundId = "rbxassetid://93369149563360[span_5](start_span)"[span_5](end_span)
-            sound.Volume = 2
-            sound.Looped = false
-            sound.Parent = torso
-            sound:Play()
-            game.Debris:AddItem(sound, 5)[span_6](start_span)[span_6](end_span)
-        end
-    end)
-
-    activeJumpConnection = humanoid.StateChanged:Connect(function(old, new)
-        if new == Enum.HumanoidStateType.Jumping then
-            cancelWCS()
-        end
-    end)
-end
-
-local function triggerFinisher(targetCharacter)
-    if isExecuting then return end
-    isExecuting = true
-
-    playDismantleStartup()
-
-    local char = player.Character or player.CharacterAdded:Wait()
-    local rootPart = char:FindFirstChild("HumanoidRootPart")
-    local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-    local humanoid = char:WaitForChild("Humanoid")
-    
-    if not rootPart then 
-        isExecuting = false
-        unlockControls()
-        return 
-    end
 
     humanoid.PlatformStand = false
     humanoid.AutoRotate = false
 
-    local cloneTarget = targetCharacter and targetCharacter:Clone() or nil
+    -- Create a lightweight clone of the target
+    local cloneTarget = targetCharacter:Clone()
+    cloneTarget.Name = "ExecutionClone"
+    cloneTarget.Parent = workspace
+
+    -- Hide and destroy the original target instantly
+    for _, obj in ipairs(targetCharacter:GetDescendants()) do
+        if obj:IsA("BasePart") or obj:IsA("Decal") or obj:IsA("Accessory") then
+            pcall(function() obj.Transparency = 1 end)
+        end
+    end
+    task.delay(0.1, function()
+        if targetCharacter then targetCharacter:Destroy() end
+    end)
+
+    local cloneHumanoid = cloneTarget:FindFirstChildOfClass("Humanoid")
+    if cloneHumanoid then cloneHumanoid:Destroy() end
+
+    local cloneRoot = cloneTarget:FindFirstChild("HumanoidRootPart") or cloneTarget:FindFirstChild("Torso")
+    
+    for _, part in ipairs(cloneTarget:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+            part.Massless = true
+            part.Anchored = false
+        end
+    end
+
     local activeWeld = nil
-
-    if cloneTarget then
-        cloneTarget.Name = "ExecutionClone"
-        cloneTarget.Parent = workspace
-
-        for _, obj in ipairs(targetCharacter:GetDescendants()) do
-            if obj:IsA("BasePart") or obj:IsA("Decal") or obj:IsA("Accessory") then
-                pcall(function() obj.Transparency = 1 end)
-            end
-        end
-        task.delay(0.1, function()
-            if targetCharacter then targetCharacter:Destroy() end
-        end)
-
-        local cloneHumanoid = cloneTarget:FindFirstChildOfClass("Humanoid")
-        if cloneHumanoid then cloneHumanoid:Destroy() end
-
-        local cloneRoot = cloneTarget:FindFirstChild("HumanoidRootPart") or cloneTarget:FindFirstChild("Torso")
+    if cloneRoot then
+        cloneRoot.CFrame = rootPart.CFrame * CFrame.new(0, 0, -3) * CFrame.Angles(0, math.rad(180), 0)
         
-        for _, part in ipairs(cloneTarget:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-                part.Massless = true
-                part.Anchored = false
-            end
-        end
-
-        if cloneRoot then
-            cloneRoot.CFrame = rootPart.CFrame * CFrame.new(0, 0, -3) * CFrame.Angles(0, math.rad(180), 0)
-            
-            activeWeld = Instance.new("WeldConstraint")
-            activeWeld.Part0 = rootPart
-            activeWeld.Part1 = cloneRoot
-            activeWeld.Parent = cloneRoot
-        end
+        activeWeld = Instance.new("WeldConstraint")
+        activeWeld.Part0 = rootPart
+        activeWeld.Part1 = cloneRoot
+        activeWeld.Parent = cloneRoot
     end
 
     local soundConfigs = {
@@ -191,10 +121,11 @@ local function triggerFinisher(targetCharacter)
 
     local anim = Instance.new("Animation")
     anim.AnimationId = "rbxassetid://95171537920426"
-    activeAnimTrack = humanoid:LoadAnimation(anim)
-    activeAnimTrack:Play()
+    local animTrack = humanoid:LoadAnimation(anim)
+    animTrack:Play()
     
-    local animLength = activeAnimTrack.Length > 0 and activeAnimTrack.Length or 1.5
+    -- Smooth straight-line tween forward
+    local animLength = animTrack.Length > 0 and animTrack.Length or 1.5
     local forwardDistance = 23 * (animLength * 0.6)
     
     local targetCFrame = rootPart.CFrame * CFrame.new(0, 0, -forwardDistance)
@@ -219,18 +150,17 @@ local function triggerFinisher(targetCharacter)
         end)
     end
     
-    activeAnimTrack.Stopped:Connect(function()
-        if not isExecuting then return end
+    -- When animation stops, release controls, break weld, and turn clone into a ragdoll explosion
+    animTrack.Stopped:Connect(function()
         if moveTween then
             moveTween:Cancel()
         end
 
-        if activeJumpConnection then
-            activeJumpConnection:Disconnect()
-            activeJumpConnection = nil
+        -- RESTORE ALL CONTROLS
+        contextActionService:UnbindAction(INPUT_BLOCK_NAME)
+        if controls then
+            controls:Enable()
         end
-
-        unlockControls()
 
         if humanoid and humanoid.Parent then
             humanoid.AutoRotate = true
@@ -256,283 +186,8 @@ local function triggerFinisher(targetCharacter)
             game.Debris:AddItem(cloneTarget, 5)
         end
         
-        local dismantleEffect = char:FindFirstChild("DismantleEffect")
-        if dismantleEffect then
-            dismantleEffect:Destroy()
-        end
-
         task.wait(1)
         isExecuting = false
-    end)
-end
-
-cancelWCS = function()
-    if not isExecuting then return end
-    
-    if activeJumpConnection then
-        activeJumpConnection:Disconnect()
-        activeJumpConnection = nil
-    end
-
-    if activeAnimTrack then
-        pcall(function() activeAnimTrack:Stop() end)
-        activeAnimTrack = nil
-    end
-
-    unlockControls()
-
-    local char = player.Character
-    if char then
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoid.AutoRotate = true
-        end
-        local dismantleEffect = char:FindFirstChild("DismantleEffect")
-        if dismantleEffect then
-            dismantleEffect:Destroy()
-        end
-    end
-
-    isExecuting = false
-end
-
-local function giveTool()
-    local backpack = player:FindFirstChild("Backpack")
-    if not backpack then return end
-
-    if not backpack:FindFirstChild("World Cutting Slash") and not (player.Character and player.Character:FindFirstChild("World Cutting Slash")) then
-        local tool = Instance.new("Tool")
-        tool.Name = "World Cutting Slash"
-        tool.RequiresHandle = false
-        tool.Parent = backpack
-
-        tool.Activated:Connect(function()
-            if isExecuting then return end
-            local char = player.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            local targetFound = nil
-
-            if root then
-                for _, other in ipairs(workspace:GetChildren()) do
-                    if other:IsA("Model") and other ~= char and other:FindFirstChild("Humanoid") then
-                        local otherRoot = other:FindFirstChild("HumanoidRootPart") or other:FindFirstChild("Torso")
-                        if otherRoot and (otherRoot.Position - root.Position).Magnitude <= 15 then
-                            targetFound = other
-                            break
-                        end
-                    end
-                end
-            end
-
-            if targetFound then
-                triggerFinisher(targetFound)
-            else
-                playDismantleStartup()
-            end
-        end)
-    end
-end
-
-player.CharacterAdded:Connect(function()
-    task.wait(1)
-    giveTool()
-end)
-giveTool()
-
-local slashAssets = {
-    {name = "1stSlash.mp3", url = "https://raw.githubusercontent.com/thefinalstandofizaan-droid/M1Assets/main/1stSlash.mp3"},
-    {name = "2ndSlash.mp3", url = "https://raw.githubusercontent.com/thefinalstandofizaan-droid/M1Assets/main/2ndSlash.mp3"},
-    {name = "3rdSlash.mp3", url = "https://raw.githubusercontent.com/thefinalstandofizaan-droid/M1Assets/main/3rdSlash.mp3"},
-    {name = "4rthSlash.mp3", url = "https://raw.githubusercontent.com/thefinalstandofizaan-droid/M1Assets/main/4rthSlash.mp3"}
-}
-
-for _, asset in ipairs(slashAssets) do
-    pcall(function()
-        if not isfile or not isfile(asset.name) then
-            local res = game:HttpGet(asset.url)
-            writefile(asset.name, res)
-        end
-    end)
-end
-
-local getAsset = getcustomasset or getsynasset
-local soundData = {
-    [1] = {{id = getAsset("1stSlash.mp3"), volume = 5}},
-    [2] = {{id = getAsset("1stSlash.mp3"), volume = 5}},
-    [3] = {{id = getAsset("2ndSlash.mp3"), volume = 5}},
-    [4] = {{id = getAsset("3rdSlash.mp3"), volume = 5}},
-    [5] = {{id = getAsset("4rthSlash.mp3"), volume = 7}}
-}
-
-local soundContainer = soundService:FindFirstChild("CustomM1Sounds")
-if not soundContainer then
-    soundContainer = Instance.new("Folder")
-    soundContainer.Name = "CustomM1Sounds"
-    soundContainer.Parent = soundService
-end
-
-local function PlaySound(assetId, volume)
-    local sound = Instance.new("Sound")
-    sound.SoundId = assetId
-    sound.Volume = volume
-    sound.Parent = soundContainer
-    sound:Play()
-    game.Debris:AddItem(sound, 3)
-end
-
-local function applyFallenEffect(character)
-    local humanoid = character:WaitForChild("Humanoid")
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    
-    if rootPart then
-        local wAtt0 = Instance.new("Attachment", rootPart)
-        wAtt0.Position = Vector3.new(1.2, -1, 0)
-        local wAtt1 = Instance.new("Attachment", rootPart)
-        wAtt1.Position = Vector3.new(1.2, 1, 0)
-        
-        local bAtt0 = Instance.new("Attachment", rootPart)
-        bAtt0.Position = Vector3.new(-1.2, -1, 0)
-        local bAtt1 = Instance.new("Attachment", rootPart)
-        bAtt1.Position = Vector3.new(-1.2, 1, 0)
-        
-        local smoothTexture = "rbxassetid://258129756"
-        
-        local whiteTrail = Instance.new("Trail")
-        whiteTrail.Attachment0 = wAtt0
-        whiteTrail.Attachment1 = wAtt1
-        whiteTrail.Lifetime = 0.5
-        whiteTrail.MinLength = 0.05
-        whiteTrail.Texture = smoothTexture
-        whiteTrail.Color = ColorSequence.new(Color3.new(1, 1, 1))
-        whiteTrail.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1)})
-        whiteTrail.Parent = rootPart
-        
-        local blackTrail = Instance.new("Trail")
-        blackTrail.Attachment0 = bAtt0
-        blackTrail.Attachment1 = bAtt1
-        blackTrail.Lifetime = 0.5
-        blackTrail.MinLength = 0.05
-        blackTrail.Texture = smoothTexture
-        blackTrail.Color = ColorSequence.new(Color3.new(0.02, 0.02, 0.02))
-        blackTrail.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1)})
-        blackTrail.Parent = rootPart
-        
-        local function createDirectAura(color, offset)
-            local emitter = Instance.new("ParticleEmitter")
-            emitter.Texture = "rbxassetid://258129756"
-            emitter.Rate = 50
-            emitter.Speed = NumberRange.new(0.5, 1.2)
-            emitter.Lifetime = NumberRange.new(0.4, 0.7)
-            emitter.Size = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 3.5),
-                NumberSequenceKeypoint.new(1, 0.5)
-            })
-            emitter.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.1),
-                NumberSequenceKeypoint.new(1, 1)
-            })
-            emitter.Color = ColorSequence.new(color)
-            emitter.LightEmission = 0.5
-            emitter.Brightness = 3
-            emitter.Shape = Enum.ParticleEmitterShape.Sphere
-            emitter.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
-            
-            local pPart = Instance.new("Part")
-            pPart.Size = Vector3.new(1, 1, 1)
-            pPart.Transparency = 1
-            pPart.CanCollide = false
-            pPart.Massless = true
-            pPart.Parent = character
-            
-            local weld = Instance.new("Weld")
-            weld.Part0 = rootPart
-            weld.Part1 = pPart
-            weld.C0 = CFrame.new(offset)
-            weld.Parent = pPart
-            
-            emitter.Parent = pPart
-            return emitter
-        end
-        
-        local whiteAura = createDirectAura(Color3.new(1, 1, 1), Vector3.new(1.2, 0, 0))
-        local blackAura = createDirectAura(Color3.new(0.02, 0.02, 0.02), Vector3.new(-1.2, 0, 0))
-        
-        task.spawn(function()
-            local isWhiteOnRight = true
-            while character and character.Parent do
-                task.wait(0.5)
-                isWhiteOnRight = not isWhiteOnRight
-                
-                local rightColor = isWhiteOnRight and Color3.new(1, 1, 1) or Color3.new(0.02, 0.02, 0.02)
-                local leftColor = isWhiteOnRight and Color3.new(0.02, 0.02, 0.02) or Color3.new(1, 1, 1)
-                
-                whiteTrail.Color = ColorSequence.new(rightColor)
-                blackTrail.Color = ColorSequence.new(leftColor)
-                whiteAura.Color = ColorSequence.new(rightColor)
-                blackAura.Color = ColorSequence.new(leftColor)
-            end
-        end)
-    end
-    
-    character:GetAttributeChangedSignal("LastM1Hitted"):Connect(function()
-        local lastHit = character:GetAttribute("LastM1Hitted")
-        if not lastHit or lastHit == "" then return end
-        
-        local comboValue = tonumber(character:GetAttribute("Combo")) or 1
-        if soundData[comboValue] then
-            for _, soundInfo in ipairs(soundData[comboValue]) do
-                PlaySound(soundInfo.id, soundInfo.volume)
-                task.wait(0.05)
-            end
-        end
-        
-        local targetName = tostring(lastHit):match("([^;]+)")
-        local target = workspace:FindFirstChild(targetName) or (workspace:FindFirstChild("Live") and workspace.Live:FindFirstChild(targetName))
-        
-        if target and target:FindFirstChild("Humanoid") then
-            local targetPart = target:FindFirstChild("HumanoidRootPart") or target:FindFirstChild("Torso") or target:FindFirstChild("UpperTorso")
-            if targetPart then
-                local function spawnParticle(part, cframeOffset, scale)
-                    if not part then return end
-                    local pPart = Instance.new("Part")
-                    pPart.Size = Vector3.new(1, 1, 1)
-                    pPart.Transparency = 1
-                    pPart.CanCollide = false
-                    pPart.Massless = true
-                    pPart.Parent = workspace
-                    
-                    local emitter = Instance.new("ParticleEmitter")
-                    emitter.Texture = "rbxassetid://18463718356"
-                    emitter.Shape = Enum.ParticleEmitterShape.Disc
-                    emitter.Lifetime = NumberRange.new(0.06)
-                    emitter.Brightness = 45
-                    emitter.Rate = 650
-                    emitter.ZOffset = 3
-                    emitter.Size = NumberSequence.new({
-                        NumberSequenceKeypoint.new(0, scale * 2.2),
-                        NumberSequenceKeypoint.new(1, 0)
-                    })
-                    emitter.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.8, 0), NumberSequenceKeypoint.new(1, 1)})
-                    emitter.Parent = pPart
-                    
-                    local weld = Instance.new("Weld")
-                    weld.Part0 = part
-                    weld.Part1 = pPart
-                    weld.C0 = cframeOffset
-                    weld.Parent = pPart
-                    
-                    task.delay(0.25, function()
-                        emitter.Rate = 0
-                        task.wait(0.15)
-                        pPart:Destroy()
-                    end)
-                end
-                
-                spawnParticle(targetPart, CFrame.new(0, 0, 0), 8)
-                spawnParticle(targetPart, CFrame.new(-2.2, 2.2, 0), 5.5)
-                spawnParticle(targetPart, CFrame.new(2.2, -2.2, 0), 4)
-            end
-        end
     end)
 end
 
@@ -581,13 +236,7 @@ player.CharacterAdded:Connect(setupAttributeListener)
 
 local monitoredCharacters = {}
 local function setupPlayer(p)
-    if p == player then
-        if p.Character then
-            applyFallenEffect(p.Character)
-        end
-        p.CharacterAdded:Connect(applyFallenEffect)
-        return
-    end
+    if p == player then return end
     p.CharacterAdded:Connect(function(char)
         if not monitoredCharacters[char] then
             monitoredCharacters[char] = true
