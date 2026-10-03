@@ -5,22 +5,23 @@ local debris = game:GetService("Debris")
 local workspace = game:GetService("Workspace")
 
 local player = players.LocalPlayer
+local isCooldown = false
 local cooldownTime = 4
 
-local function executeWorldCuttingSlash(toolInstance)
-    -- Check if the tool is currently on cooldown using an attribute on the tool itself
-    if toolInstance:GetAttribute("OnCooldown") then return end
-    toolInstance:SetAttribute("OnCooldown", true)
+local function executeWorldCuttingSlash()
+    -- Strict cooldown check to prevent overlapping
+    if isCooldown then return end
+    isCooldown = true
 
     local char = player.Character
     if not char then 
-        toolInstance:SetAttribute("OnCooldown", false)
+        isCooldown = false
         return 
     end
     
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid then 
-        toolInstance:SetAttribute("OnCooldown", false)
+        isCooldown = false
         return 
     end
 
@@ -163,7 +164,7 @@ local function executeWorldCuttingSlash(toolInstance)
                             clearedObjects[targetObj] = true
                             
                             local treeClone = targetObj:Clone()
-                            table.init = table.insert(savedTreeData, {
+                            table.insert(savedTreeData, {
                                 Clone = treeClone,
                                 Parent = targetObj.Parent
                             })
@@ -197,11 +198,9 @@ local function executeWorldCuttingSlash(toolInstance)
         sound:Play()
     end)
 
-    -- Release the cooldown after 4 seconds
+    -- Reset cooldown after 4 seconds
     task.delay(cooldownTime, function()
-        if toolInstance then
-            toolInstance:SetAttribute("OnCooldown", false)
-        end
+        isCooldown = false
     end)
 end
 
@@ -216,7 +215,7 @@ local function giveTool()
         tool.Parent = backpack
 
         tool.Activated:Connect(function()
-            executeWorldCuttingSlash(tool)
+            executeWorldCuttingSlash()
         end)
     end
 end
