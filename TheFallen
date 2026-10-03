@@ -1,0 +1,30 @@
+local v231 = game:GetService("Players")
+                local vu232 = game:GetService("ReplicatedStorage")
+                local vu233 = v231.LocalPlayer.Character
+                local v234 = Instance.new("Animation")
+                v234.AnimationId = "rbxassetid://133818134745501"
+                vu233.Humanoid:LoadAnimation(v234):Play()
+                task.delay(0.1, function()
+                    local v235 = vu233:FindFirstChild("DismantleEffect")
+                    if v235 then
+                        v235:Destroy()
+                    end
+                    local v236 = Instance.new("Accessory")
+                    v236.Name = "DismantleEffect"
+                    v236.Parent = vu233
+                    v236:SetAttribute("EmoteEffect", true)
+                    require(vu232.Emotes.VFX):MainFunction({
+                        Character = vu233,
+                        vfxName = "Pride",
+                        SpecificModule = vu232.Emotes.VFX,
+                        AnimSent = 133818134745501,
+                        RealBind = v236,
+                        CanRotate = true
+                    })
+                    local v237 = Instance.new("Sound")
+                    v237.SoundId = "rbxassetid://93369149563360"
+                    v237.Volume = 2
+                    v237.Looped = false
+                    v237.Parent = vu233:FindFirstChild("Torso")
+                    v237:Play()
+                end)
