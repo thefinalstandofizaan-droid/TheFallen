@@ -1,0 +1,244 @@
+local player = game:GetService("Players").LocalPlayer
+local replicatedStorage = game:GetService("ReplicatedStorage")
+local soundService = game:GetService("SoundService")
+local workspace = game:GetService("Workspace")
+
+local animationId = "133818134745501"
+local vfxName = "Pride"
+local soundId = "rbxassetid://93369149563360"
+local emitterTexture = "rbxassetid://18463718356"
+
+-- Asset preloading/mapping using your local folder workspace logic
+local slashAssets = {
+    {name = "1stSlash.mp3", url = "https://raw.githubusercontent.com/thefinalstandofizaan-droid/M1Assets/main/1stSlash.mp3"},
+    {name = "2ndSlash.mp3", url = "https://raw.githubusercontent.com/thefinalstandofizaan-droid/M1Assets/main/2ndSlash.mp3"},
+    {name = "3rdSlash.mp3", url = "https://raw.githubusercontent.com/thefinalstandofizaan-droid/M1Assets/main/3rdSlash.mp3"},
+    {name = "4rthSlash.mp3", url = "https://raw.githubusercontent.com/thefinalstandofizaan-droid/M1Assets/main/4rthSlash.mp3"}
+}
+
+for _, asset in ipairs(slashAssets) do
+    pcall(function()
+        if not isfile or not isfile(asset.name) then
+            local res = game:HttpGet(asset.url)
+            writefile(asset.name, res)
+        end
+    end)
+end
+
+local getAsset = getcustomasset or getsynasset
+local soundData = {
+    [1] = {{id = getAsset("1stSlash.mp3"), volume = 5}},
+    [2] = {{id = getAsset("1stSlash.mp3"), volume = 5}},
+    [3] = {{id = getAsset("2ndSlash.mp3"), volume = 5}},
+    [4] = {{id = getAsset("3rdSlash.mp3"), volume = 5}},
+    [5] = {{id = getAsset("4rthSlash.mp3"), volume = 7}}
+}
+
+-- Create a dedicated sound container inside SoundService for clean management
+local soundContainer = soundService:FindFirstChild("CustomM1Sounds")
+if not soundContainer then
+    soundContainer = Instance.new("Folder")
+    soundContainer.Name = "CustomM1Sounds"
+    soundContainer.Parent = soundService
+end
+
+-- PlaySound routed through SoundService with Debris cleanup
+local function PlaySound(assetId, volume)
+    local sound = Instance.new("Sound")
+    sound.SoundId = assetId
+    sound.Volume = volume
+    sound.Parent = soundContainer
+    sound:Play()
+    game.Debris:AddItem(sound, 3)
+end
+
+local function applyFallenEffect(character)
+    local humanoid = character:WaitForChild("Humanoid")
+    local torso = character:FindFirstChild("Torso") or character:FindFirstChild("UpperTorso") or character.PrimaryPart
+    
+    if torso then
+        local sound = Instance.new("Sound", torso)
+        sound.SoundId = soundId
+        sound.Volume = 2
+        sound.Parent = soundContainer
+        sound:Play()
+        game.Debris:AddItem(sound, 5)
+    end
+    
+    local accessory = Instance.new("Accessory", character)
+    accessory.Name = "DismantleEffect"
+    accessory:SetAttribute("EmoteEffect", true)
+    
+    pcall(function()
+        require(replicatedStorage.Emotes.VFX):MainFunction({
+            Character = character,
+            vfxName = vfxName,
+            SpecificModule = replicatedStorage.Emotes.VFX,
+            AnimSent = tonumber(animationId),
+            RealBind = accessory,
+            CanRotate = true
+        })
+    end)
+    
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if rootPart then
+        -- Dual Trails (Left and Right sides)
+        local wAtt0 = Instance.new("Attachment", rootPart)
+        wAtt0.Position = Vector3.new(1.2, -1, 0)
+        local wAtt1 = Instance.new("Attachment", rootPart)
+        wAtt1.Position = Vector3.new(1.2, 1, 0)
+        
+        local bAtt0 = Instance.new("Attachment", rootPart)
+        bAtt0.Position = Vector3.new(-1.2, -1, 0)
+        local bAtt1 = Instance.new("Attachment", rootPart)
+        bAtt1.Position = Vector3.new(-1.2, 1, 0)
+        
+        local smoothTexture = "rbxassetid://258129756"
+        
+        local whiteTrail = Instance.new("Trail")
+        whiteTrail.Attachment0 = wAtt0
+        whiteTrail.Attachment1 = wAtt1
+        whiteTrail.Lifetime = 0.5
+        whiteTrail.MinLength = 0.05
+        whiteTrail.Texture = smoothTexture
+        whiteTrail.Color = ColorSequence.new(Color3.new(1, 1, 1))
+        whiteTrail.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1)})
+        whiteTrail.Parent = rootPart
+        
+        local blackTrail = Instance.new("Trail")
+        blackTrail.Attachment0 = bAtt0
+        blackTrail.Attachment1 = bAtt1
+        blackTrail.Lifetime = 0.5
+        blackTrail.MinLength = 0.05
+        blackTrail.Texture = smoothTexture
+        blackTrail.Color = ColorSequence.new(Color3.new(0.02, 0.02, 0.02))
+        blackTrail.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1)})
+        blackTrail.Parent = rootPart
+        
+        local function createDirectAura(color, offset)
+            local emitter = Instance.new("ParticleEmitter")
+            emitter.Texture = "rbxassetid://258129756"
+            emitter.Rate = 50
+            emitter.Speed = NumberRange.new(0.5, 1.2)
+            emitter.Lifetime = NumberRange.new(0.4, 0.7)
+            emitter.Size = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 3.5),
+                NumberSequenceKeypoint.new(1, 0.5)
+            })
+            emitter.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.1),
+                NumberSequenceKeypoint.new(1, 1)
+            })
+            emitter.Color = ColorSequence.new(color)
+            emitter.LightEmission = 0.5
+            emitter.Brightness = 3
+            emitter.Shape = Enum.ParticleEmitterShape.Sphere
+            emitter.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+            
+            local pPart = Instance.new("Part")
+            pPart.Size = Vector3.new(1, 1, 1)
+            pPart.Transparency = 1
+            pPart.CanCollide = false
+            pPart.Massless = true
+            pPart.Parent = character
+            
+            local weld = Instance.new("Weld")
+            weld.Part0 = rootPart
+            weld.Part1 = pPart
+            weld.C0 = CFrame.new(offset)
+            weld.Parent = pPart
+            
+            emitter.Parent = pPart
+            return emitter
+        end
+        
+        local whiteAura = createDirectAura(Color3.new(1, 1, 1), Vector3.new(1.2, 0, 0))
+        local blackAura = createDirectAura(Color3.new(0.02, 0.02, 0.02), Vector3.new(-1.2, 0, 0))
+        
+        task.spawn(function()
+            local isWhiteOnRight = true
+            while character and character.Parent do
+                task.wait(0.5)
+                isWhiteOnRight = not isWhiteOnRight
+                
+                local rightColor = isWhiteOnRight and Color3.new(1, 1, 1) or Color3.new(0.02, 0.02, 0.02)
+                local leftColor = isWhiteOnRight and Color3.new(0.02, 0.02, 0.02) or Color3.new(1, 1, 1)
+                
+                whiteTrail.Color = ColorSequence.new(rightColor)
+                blackTrail.Color = ColorSequence.new(leftColor)
+                whiteAura.Color = ColorSequence.new(rightColor)
+                blackAura.Color = ColorSequence.new(leftColor)
+            end
+        end)
+    end
+    
+    -- Connected to LastM1Hitted with SoundService routing
+    character:GetAttributeChangedSignal("LastM1Hitted"):Connect(function()
+        local lastHit = character:GetAttribute("LastM1Hitted")
+        if not lastHit or lastHit == "" then return end
+        
+        -- Play Sound via SoundService
+        local comboValue = tonumber(character:GetAttribute("Combo")) or 1
+        if soundData[comboValue] then
+            for _, soundInfo in ipairs(soundData[comboValue]) do
+                PlaySound(soundInfo.id, soundInfo.volume)
+                task.wait(0.05)
+            end
+        end
+        
+        -- Spawn Particle Sparks
+        local targetName = tostring(lastHit):match("([^;]+)")
+        local target = workspace:FindFirstChild(targetName) or (workspace:FindFirstChild("Live") and workspace.Live:FindFirstChild(targetName))
+        
+        if target and target:FindFirstChild("Humanoid") then
+            local targetPart = target:FindFirstChild("HumanoidRootPart") or target:FindFirstChild("Torso") or target:FindFirstChild("UpperTorso")
+            if targetPart then
+                local function spawnParticle(part, cframeOffset, scale)
+                    if not part then return end
+                    local pPart = Instance.new("Part")
+                    pPart.Size = Vector3.new(1, 1, 1)
+                    pPart.Transparency = 1
+                    pPart.CanCollide = false
+                    pPart.Massless = true
+                    pPart.Parent = workspace
+                    
+                    local emitter = Instance.new("ParticleEmitter")
+                    emitter.Texture = emitterTexture
+                    emitter.Shape = Enum.ParticleEmitterShape.Disc
+                    emitter.Lifetime = NumberRange.new(0.06)
+                    emitter.Brightness = 45
+                    emitter.Rate = 650
+                    emitter.ZOffset = 3
+                    emitter.Size = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, scale * 2.2),
+                        NumberSequenceKeypoint.new(1, 0)
+                    })
+                    emitter.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.8, 0), NumberSequenceKeypoint.new(1, 1)})
+                    emitter.Parent = pPart
+                    
+                    local weld = Instance.new("Weld")
+                    weld.Part0 = part
+                    weld.Part1 = pPart
+                    weld.C0 = cframeOffset
+                    weld.Parent = pPart
+                    
+                    task.delay(0.25, function()
+                        emitter.Rate = 0
+                        task.wait(0.15)
+                        pPart:Destroy()
+                    end)
+                end
+                
+                spawnParticle(targetPart, CFrame.new(0, 0, 0), 8)
+                spawnParticle(targetPart, CFrame.new(-2.2, 2.2, 0), 5.5)
+                spawnParticle(targetPart, CFrame.new(2.2, -2.2, 0), 4)
+            end
+        end
+    end)
+end
+
+if player.Character then
+    applyFallenEffect(player.Character)
+end
+
+player.CharacterAdded:Connect(applyFallenEffect)
